@@ -1,100 +1,192 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.optimize import linprog
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Programación Lineal - Simplex y Gráfico</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.11.0/math.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      background-color: #f4f4f4;
+    }
+    h1 {
+      color: #333;
+    }
+    textarea, input {
+      width: 100%;
+      margin: 10px 0;
+      padding: 8px;
+      font-family: monospace;
+    }
+    button {
+      background-color: #007BFF;
+      color: white;
+      padding: 10px;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #grafico {
+      margin-top: 20px;
+    }
+    pre {
+      background-color: #fff;
+      padding: 10px;
+      border: 1px solid #ccc;
+      overflow: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>🧮 Programación Lineal: Simplex y Método Gráfico</h1>
 
-def resolver_simplex(c, A, b):
-    print("\n🔷 Método SIMPLEX")
-    resultado = linprog(c=-np.array(c), A_ub=A, b_ub=b, method='simplex')
+  <label>Función objetivo (ej: 3x + 5y):</label>
+  <input id="objetivo" value="3x + 5y">
 
-    if resultado.success:
-        print("✅ Solución encontrada:")
-        print(" - Variables óptimas:", resultado.x)
-        print(" - Valor óptimo de la función objetivo:", -resultado.fun)
-    else:
-        print("❌ No se encontró solución:", resultado.message)
+  <label>Restricciones (una por línea, ejemplo: x + 2y <= 10):</label>
+  <textarea id="restricciones" rows="4">x + 2y <= 10
+3x + y <= 15</textarea>
 
-    return resultado
+  <button onclick="resolver()">Resolver</button>
 
-def resolver_grafico(c, A, b):
-    print("\n🔷 Método GRÁFICO (solo para 2 variables)")
-    if len(c) != 2:
-        print("⚠️ El método gráfico solo es posible con 2 variables.")
-        return
+  <div id="resultados">
+    <h3>📊 Resultados:</h3>
+    <pre id="output">---</pre>
+  </div>
 
-    x_vals = np.linspace(0, max(b)*1.2, 400)
-    plt.figure()
+  <canvas id="grafico" width="600" height="400"></canvas>
 
-    for i, (a, bi) in enumerate(zip(A, b)):
-        if a[1] != 0:
-            y_vals = (bi - a[0]*x_vals) / a[1]
-            plt.plot(x_vals, y_vals, label=f"Restricción {i+1}")
-        else:
-            x_line = bi / a[0]
-            plt.axvline(x=x_line, label=f"Restricción {i+1}")
+  <script>
+    function parseFuncion(funcionStr) {
+      const vars = ['x', 'y'];
+      let coef = vars.map(v => {
+        const regex = new RegExp("([+-]?\\d*\\.?\\d*)\\s*" + v);
+        const match = funcionStr.match(regex);
+        if (match) return parseFloat(match[1] || '1');
+        return 0;
+      });
+      return coef;
+    }
 
-    plt.xlabel("x₁")
-    plt.ylabel("x₂")
-    plt.xlim(0)
-    plt.ylim(0)
-    plt.axhline(0, color='black', lw=0.5)
-    plt.axvline(0, color='black', lw=0.5)
-    plt.title("Método Gráfico")
-    plt.grid(True)
-    plt.legend()
-    plt.show()
+    function parseRestricciones(texto) {
+      const lineas = texto.trim().split("\n");
+      let A = [], b = [];
 
-def analisis_sensibilidad(resultado, c, A, b):
-    print("\n🔷 ANÁLISIS DE SENSIBILIDAD (básico)")
+      lineas.forEach(linea => {
+        const match = linea.match(/(.+)(<=|>=|=)(.+)/);
+        if (match) {
+          const [_, lhs, op, rhs] = match;
+          const coef = parseFuncion(lhs);
+          A.push(coef);
+          b.push(Number(rhs.trim()));
+        }
+      });
 
-    if not resultado.success:
-        print("❌ No se puede realizar el análisis porque no se obtuvo solución.")
-        return
+      return { A, b };
+    }
 
-    # Precios sombra aproximados usando dualidad
-    print("\n📌 Precios sombra estimados:")
-    dual_vars = resultado.get("ineqlin", None)
-    if hasattr(resultado, "ineqlin") and hasattr(resultado.ineqlin, "marginals"):
-        precios_sombra = resultado.ineqlin.marginals
-        for i, ps in enumerate(precios_sombra):
-            print(f" - Restricción {i+1}: {ps:.3f}")
-    else:
-        print(" (No disponible con el método 'simplex' de scipy)")
+    function resolver() {
+      const c = parseFuncion(document.getElementById("objetivo").value);
+      const { A, b } = parseRestricciones(document.getElementById("restricciones").value);
 
-    print("\n📌 Interpretación:")
-    print(" - Los precios sombra muestran cuánto mejora la función objetivo si se incrementa en 1 unidad el lado derecho de cada restricción (b).")
-    print(" - Si el precio sombra es 0, aumentar esa restricción no ayuda a mejorar la solución óptima.")
+      let texto = `🔹 Función objetivo: Max Z = ${c.join(" , ")}\n`;
+      texto += `🔹 Restricciones:\n`;
 
-def interpretar_resultados(resultado, c):
-    print("\n🔷 INTERPRETACIÓN DE RESULTADOS")
-    if not resultado.success:
-        print("❌ No se puede interpretar una solución no factible.")
-        return
+      A.forEach((row, i) => {
+        texto += `   ${row.join(" , ")} <= ${b[i]}\n`;
+      });
 
-    for i, xi in enumerate(resultado.x):
-        print(f" - Variable x{i+1} = {xi:.2f}")
+      const vertices = calcularVertices(A, b);
+      let maxZ = -Infinity;
+      let solucion = null;
 
-    print(f"\n✅ El valor máximo de la función objetivo es: {-resultado.fun:.2f}")
-    print(" - Esto significa que bajo las restricciones dadas, esta es la mejor solución posible.")
+      vertices.forEach(v => {
+        const z = math.dot(c, v);
+        if (z > maxZ) {
+          maxZ = z;
+          solucion = v;
+        }
+      });
 
-def main():
-    # Puedes cambiar este ejemplo
-    print("📌 Resolviendo: Max Z = 3x₁ + 5x₂")
-    print("s.a.:")
-    print(" - x₁ + 2x₂ ≤ 10")
-    print(" - 3x₁ + x₂ ≤ 15")
-    print(" - x₁, x₂ ≥ 0")
+      if (solucion) {
+        texto += `\n✅ Solución óptima:\n`;
+        texto += `   Variables: x = ${solucion[0].toFixed(2)}, y = ${solucion[1].toFixed(2)}\n`;
+        texto += `   Valor óptimo Z = ${maxZ.toFixed(2)}\n`;
+      } else {
+        texto += "\n❌ No se encontró solución válida.\n";
+      }
 
-    c = [3, 5]  # Coeficientes de la función objetivo
-    A = [
-        [1, 2],
-        [3, 1]
-    ]
-    b = [10, 15]
+      document.getElementById("output").textContent = texto;
+      dibujarGrafico(A, b, solucion);
+    }
 
-    resultado = resolver_simplex(c, A, b)
-    resolver_grafico(c, A, b)
-    analisis_sensibilidad(resultado, c, A, b)
-    interpretar_resultados(resultado, c)
+    function calcularVertices(A, b) {
+      const puntos = [];
+      for (let i = 0; i < A.length; i++) {
+        for (let j = i + 1; j < A.length; j++) {
+          const mat = [A[i], A[j]];
+          const vector_b = [b[i], b[j]];
+          try {
+            const sol = math.lusolve(mat, vector_b).map(row => row[0]);
+            if (sol.every(val => val >= 0)) {
+              let cumple = true;
+              for (let k = 0; k < A.length; k++) {
+                if (math.dot(A[k], sol) > b[k] + 1e-6) {
+                  cumple = false;
+                  break;
+                }
+              }
+              if (cumple) puntos.push(sol);
+            }
+          } catch (e) { }
+        }
+      }
+      puntos.push([0, 0]);
+      return puntos;
+    }
 
-if __name__ == "__main__":
-    main()
+    function dibujarGrafico(A, b, punto) {
+      const canvas = document.getElementById("grafico");
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const escala = 40;
+
+      // Ejes
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height);
+      ctx.lineTo(canvas.width, canvas.height);
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, canvas.height);
+      ctx.stroke();
+
+      // Restricciones
+      A.forEach((a, i) => {
+        const x = canvas.width / escala;
+        const y = (b[i] - a[0] * 0) / a[1];
+        const y2 = (b[i] - a[0] * x) / a[1];
+
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.height - y * escala);
+        ctx.lineTo(x * escala, canvas.height - y2 * escala);
+        ctx.strokeStyle = `hsl(${i * 90}, 100%, 40%)`;
+        ctx.stroke();
+      });
+
+      // Punto óptimo
+      if (punto) {
+        ctx.beginPath();
+        ctx.arc(punto[0] * escala, canvas.height - punto[1] * escala, 5, 0, 2 * Math.PI);
+        ctx.fillStyle = "red";
+        ctx.fill();
+        ctx.fillText("Óptimo", punto[0] * escala + 5, canvas.height - punto[1] * escala - 5);
+      }
+    }
+  </script>
+</body>
+</html>
